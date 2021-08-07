@@ -1,0 +1,36 @@
+{
+  "name": "hgraca/benchmark-id",
+  "description": "A script to benchmark different types of IDs in php/mysql.",
+  "type": "project",
+  "license": "MIT",
+  "minimum-stability": "dev",
+  "prefer-stable": true,
+  "config": {
+    "platform": {
+      "php": "8.0"
+    },
+    "optimize-autoloader": true,
+    "preferred-install": {
+      "*": "dist"
+    },
+    "sort-packages": true
+  },
+  "require": {
+    "php": "8.0",
+    "ext-pdo": "*",
+    "composer/package-versions-deprecated": "1.11.99.1",
+    "jc21/clitable": "^1.2",
+    "ramsey/uuid": "^4.1.1",
+    "symfony/uid": "^v5.3.3"
+  },
+  "require-dev": {
+    "malukenho/mcbumpface": "^1.1.5",
+    "psalm/plugin-phpunit": "^0.15.2",
+    "roave/security-advisories": "dev-latest"
+  },
+  "autoload": {
+    "psr-4": {
+      "Hgraca\\BenchmarkIds\\": "src/"
+    }
+  }
+}

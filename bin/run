@@ -1,0 +1,166 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+require_once dirname(__DIR__) . '/vendor/autoload.php';
+
+use Hgraca\BenchmarkIds\BenchmarkId;
+use Hgraca\BenchmarkIds\PdoFactory;
+use jc21\CliTable;
+use Ramsey\Uuid\Uuid;
+use Symfony\Component\Uid\Ulid;
+use Symfony\Component\Uid\UuidV4;
+
+
+$amountOfRows = 10000;
+$amountOfInsertBenchmarks = 3;
+$amountOfQueryBenchmarks = 100;
+
+$host = 'bechmark_ids_mysql';
+$dbName = 'benchmark';
+$user = 'root';
+$pass = 'root';
+$charset = 'utf8mb4';
+
+$pdo = PdoFactory::create($host, $dbName, $user, $pass, $charset);
+
+$benchmarkList = [
+        ($benchmarkName = 'int') => new BenchmarkId($pdo, $dbName, 'INT AUTO_INCREMENT', 'INT', $benchmarkName),
+        ($benchmarkName = 'text_uuid_ramsey') => new BenchmarkId(
+                $pdo,
+                $dbName,
+                'CHAR(36)',
+                'CHAR(36)',
+                $benchmarkName,
+                function () {
+                    return (string) Uuid::uuid4();
+                }
+        ),
+        ($benchmarkName = 'text_uuid_symfony') => new BenchmarkId(
+                $pdo,
+                $dbName,
+                'CHAR(36)',
+                'CHAR(36)',
+                $benchmarkName,
+                function () {
+                    return UuidV4::v4()->toRfc4122();
+                }
+        ),
+        ($benchmarkName = 'text_ulid_symfony') => new BenchmarkId(
+                $pdo,
+                $dbName,
+                'CHAR(26)',
+                'CHAR(26)',
+                $benchmarkName,
+                function () {
+                    return Ulid::generate();
+                }
+        ),
+        ($benchmarkName = 'bin_uuid_ramsey') => new BenchmarkId(
+                $pdo,
+                $dbName,
+                'binary(16)',
+                'binary(16)',
+                $benchmarkName,
+                function () {
+                    return Uuid::uuid4()->getBytes();
+                }
+        ),
+        ($benchmarkName = 'bin_uuid_symfony') => new BenchmarkId(
+                $pdo,
+                $dbName,
+                'binary(16)',
+                'binary(16)',
+                $benchmarkName,
+                function () {
+                    return UuidV4::v4()->toBinary();
+                }
+        ),
+        ($benchmarkName = 'bin_ulid_symfony') => new BenchmarkId(
+                $pdo,
+                $dbName,
+                'binary(16)',
+                'binary(16)',
+                $benchmarkName,
+                function () {
+                    return (new Ulid)->toBinary();
+                }
+        ),
+];
+
+switch ($argv[1] ?? null) {
+    case 'insert':
+        benchmarkInserts($benchmarkList, $amountOfInsertBenchmarks, $amountOfRows);
+        break;
+    case 'query':
+        benchmarkQueries($benchmarkList, $amountOfQueryBenchmarks);
+        break;
+    case 'all':
+        benchmarkInserts($benchmarkList, $amountOfInsertBenchmarks, $amountOfRows);
+        benchmarkQueries($benchmarkList, $amountOfQueryBenchmarks);
+        break;
+    default:
+        echo "You must provide one of the options: 'all', 'insert' or 'query'.\n";
+}
+
+/**
+ * @param array<string, BenchmarkId> $benchmarkList
+ */
+function benchmarkInserts(array $benchmarkList, int $amountOfInsertBenchmarks, int $amountOfRows): void
+{
+    $benchmarkResults = [];
+    foreach ($benchmarkList as $benchmarkName => $benchmarkObj) {
+        echo "Starting creation and insertion benchmark '$benchmarkName'... \n";
+        for ($i = 0; $i < $amountOfInsertBenchmarks; $i++) {
+            $benchmarkNameIterationName = 'CREATE_INSERT_' . $benchmarkName . '_' . $i;
+            $benchmarkResults[$benchmarkNameIterationName]['benchmark'] = $benchmarkNameIterationName;
+            $benchmarkResults[$benchmarkNameIterationName]['create_tables'] = $benchmarkObj->createTables();
+            $benchmarkResults[$benchmarkNameIterationName]['insert_in_table_A'] = $benchmarkObj->insertDataInTableA($amountOfRows);
+            $benchmarkResults[$benchmarkNameIterationName]['insert_in_table_B'] = $benchmarkObj->insertDataInTableB($amountOfRows);
+            $benchmarkResults[$benchmarkNameIterationName]['insert_in_table_AB'] = $benchmarkObj->insertDataInTableAB($amountOfRows);
+            $benchmarkResults[$benchmarkNameIterationName]['tables_size_in_bytes'] = $benchmarkObj->getTablesSize();
+        }
+        echo "Done!\n";
+    }
+
+    $table = new CliTable();
+    $table->addField('benchmark', 'benchmark');
+    $table->addField('creation', 'create_tables');
+    $table->addField('insert_table_a', 'insert_in_table_A');
+    $table->addField('insert_table_b', 'insert_in_table_B');
+    $table->addField('insert_table_ab', 'insert_in_table_AB');
+    $table->addField('tables_size', 'tables_size');
+    $table->injectData($benchmarkResults);
+    $table->display();
+}
+
+/**
+ * @param array<string, BenchmarkId> $benchmarkList
+ */
+function benchmarkQueries(array $benchmarkList, int $amountOfQueryBenchmarks): void
+{
+    $benchmarkResults = [];
+    foreach ($benchmarkList as $benchmarkName => $benchmarkObj) {
+        echo "Starting queries benchmark '$benchmarkName'... \n";
+        $idList = $benchmarkObj->getIdList();
+        for ($i = 0; $i < $amountOfQueryBenchmarks; $i++) {
+            $benchmarkNameIterationName = 'QUERIES_' . $benchmarkName . '_' . $i;
+            $benchmarkResults[$benchmarkNameIterationName]['benchmark'] = $benchmarkNameIterationName;
+            $benchmarkResults[$benchmarkNameIterationName]['query_single_table'] = $benchmarkObj->querySingleTable(
+                    $idList
+            );
+            $benchmarkResults[$benchmarkNameIterationName]['query_joined_tables'] = $benchmarkObj->queryJoinedTables(
+                    $idList
+            );
+        }
+        echo "Done!\n";
+    }
+
+    $table = new CliTable();
+    $table->addField('benchmark', 'benchmark');
+    $table->addField('query_single_table', 'query_single_table');
+    $table->addField('query_joined_tables', 'query_joined_tables');
+    $table->injectData($benchmarkResults);
+    $table->display();
+}
